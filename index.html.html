@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HF-100 Radiographic Generator Trainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --housing:#1b1e22;
+    --panel:#25292f;
+    --panel-raised:#2e333a;
+    --lcd-bg:#0d1210;
+    --amber:#ffb74a;
+    --green:#4ce07a;
+    --red:#e5484d;
+    --rotor:#f5a623;
+    --text-dim:#9aa0a6;
+    --text-bright:#e7e9ea;
+    --border:#3a3f46;
+    --font-label:'Barlow Condensed', sans-serif;
+    --font-lcd:'Share Tech Mono', monospace;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    padding:32px 16px;
+    background:#0f1113;
+    display:flex;
+    justify-content:center;
+    font-family:var(--font-label);
+    color:var(--text-bright);
+  }
+  .console{
+    width:100%;
+    max-width:900px;
+    background:var(--housing);
+    border-radius:18px;
+    padding:20px;
+    box-shadow:0 20px 50px rgba(0,0,0,.5), inset 0 0 0 1px #000;
+  }
+  .console-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    padding-bottom:12px;
+    border-bottom:1px solid var(--border);
+    margin-bottom:14px;
+  }
+  .brand{ font-size:20px; font-weight:600; letter-spacing:.04em; }
+  .model{ font-size:13px; color:var(--text-dim); }
+
+  .tube-bay{ background:var(--panel); border-radius:12px; padding:10px 10px 6px; display:flex; flex-direction:column; justify-content:center; }
+  .status-leds{ display:flex; gap:16px; padding:8px 6px 2px; flex-wrap:wrap; }
+  .sim-note{ font-size:11px; color:var(--text-dim); padding:4px 6px 0; }
+  .led{ display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-dim); }
+  .led .dot{ width:9px; height:9px; border-radius:50%; background:#41474f; box-shadow:inset 0 0 2px rgba(0,0,0,.6); transition:background .2s, box-shadow .2s; }
+  .led.rotor.on .dot{ background:var(--green); box-shadow:0 0 6px var(--green); }
+  .led.rotor.blink .dot{ animation:blink .6s step-start infinite; background:var(--rotor); box-shadow:0 0 6px var(--rotor); }
+  .led.expose.on .dot{ background:var(--amber); box-shadow:0 0 8px var(--amber); }
+  .led.fault.on .dot{ background:var(--red); box-shadow:0 0 8px var(--red); }
+  @keyframes blink{ 50%{ opacity:.15; } }
+
+  .anode-damage-marks{ opacity:0; transition:opacity .3s; }
+  .anode-damage-marks.visible{ opacity:1; }
+  .chamber-seg{ fill:#2c333a; stroke:#3a4550; stroke-width:1; transition:fill .15s, stroke .15s; }
+  .chamber-seg.selected{ stroke:#9fd3ff; stroke-width:2; }
+  .chamber-seg.firing{ fill:#ffb74a; stroke:#c98a4b; }
+  #downstream-assembly{ transition:opacity .2s; }
+  #downstream-assembly.inactive-controls{ opacity:.4; }
+  .filament{ fill:none; stroke:#55606b; stroke-width:2; transition:stroke .3s; }
+  .filament-unit.heating .filament{ stroke:var(--amber); animation:glow .8s ease-in-out infinite; }
+  @keyframes glow{ 0%,100%{ opacity:.8; } 50%{ opacity:1; } }
+  .emission-cloud{ fill:url(#emissionGlow); opacity:0; transition:opacity .3s; transform-box:fill-box; transform-origin:center; }
+  .filament-unit.heating .emission-cloud{ opacity:1; animation:cloudPulse 1.1s ease-in-out infinite; }
+  @keyframes cloudPulse{ 0%,100%{ transform:scale(.85); opacity:.5; } 50%{ transform:scale(1.15); opacity:.9; } }
+  #beam-electron, #xray-cone{ opacity:0; transition:opacity .15s ease-out; }
+  #beam-electron.active{ opacity:1; animation:pulseBeam .5s ease-in-out infinite; }
+  #xray-cone.active{ opacity:.85; animation:pulseCone .5s ease-in-out infinite; }
+  @keyframes pulseBeam{ 0%,100%{ opacity:.7; } 50%{ opacity:1; } }
+  @keyframes pulseCone{ 0%,100%{ opacity:.55; } 50%{ opacity:.85; } }
+  .electron-stream{ opacity:0; transition:opacity .15s; }
+  .electron-stream.active{ opacity:1; }
+  #impact-flash{ opacity:0; transition:opacity .1s; }
+  #impact-flash.active{ animation:impactPulse .3s ease-in-out infinite; }
+  #impact-flash.arc{ fill:var(--red); }
+  @keyframes impactPulse{ 0%,100%{ opacity:.4; r:7; } 50%{ opacity:1; r:11; } }
+
+  @media (prefers-reduced-motion: reduce){
+    .filament-unit.heating .filament, .filament-unit.heating .emission-cloud, .led.blink .dot{ animation:none !important; }
+    .filament-unit.heating .emission-cloud{ opacity:.75 !important; }
+    #beam-electron.active, #xray-cone.active, #qa-beam-cone.active, #aec-beam-cone.active, #impact-flash.active{ animation:none !important; opacity:1; }
+  }
+
+  .waveforms{ background:var(--panel); border-radius:12px; padding:10px; }
+  .main-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; align-items:start; }
+  .main-grid .displays{ grid-column:1; grid-row:1; }
+  .main-grid .status-line{ grid-column:1; grid-row:2; }
+  .main-grid .controls{ grid-column:1; grid-row:3; }
+  .main-grid .chamber-row{ grid-column:1; grid-row:4; }
+  .main-grid #aec-controls-row{ grid-row:5; }
+  .main-grid .exposure-row{ grid-column:1; grid-row:6; }
+  .main-grid .instructor-panel{ grid-column:1; grid-row:7; }
+  .main-grid .tube-bay{ grid-column:2; grid-row:1 / span 7; align-self:stretch; }
+  .section-label{ font-size:12px; color:var(--text-dim); margin-bottom:6px; letter-spacing:.03em; }
+  .scope{ margin-bottom:6px; }
+  .scope:last-child{ margin-bottom:0; }
+  .scope-label{ font-size:12px; color:var(--text-dim); margin-bottom:3px; }
+  .scope-axis{ display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim); margin-top:2px; font-family:var(--font-lcd); }
+  .scope-svg{ display:block; width:100%; height:28px; background:var(--lcd-bg); border-radius:6px; }
+  .scope-baseline{ stroke:#31363d; stroke-width:1; transition:stroke .2s; }
+  .scope-trace{ fill:none; stroke:#9fd3ff; stroke-width:1.6; transition:stroke .2s; }
+  .trace-gated{ opacity:0; transition:opacity .1s; }
+  .waveforms.exposing .trace-gated{ opacity:1; }
+  .waveforms.exposing .trace-gated .scope-trace{ stroke:#ffb74a; }
+  .waveforms.kv-shown .trace-gated{ opacity:1; }
+  .waveforms.kv-shown .trace-gated .scope-trace{ stroke:#ffb74a; }
+  .load-trace{ opacity:0; transition:opacity .06s; }
+  .waveforms.current-flowing .load-trace{ opacity:1; stroke:#ffb74a; }
+  .waveforms.current-shown .load-trace{ opacity:1; stroke:#ffb74a; }
+  .waveforms.load-fault-shown .load-baseline{ stroke:#e5484d; }
+  .signal-group-label{ font-size:11px; font-weight:600; letter-spacing:.03em; margin-bottom:6px; }
+  .signal-group-label.permanent{ color:#9fd3ff; margin-top:4px; }
+  .signal-group-label.ephemeral{ color:#ffb74a; margin-top:14px; padding-top:10px; border-top:1px solid var(--border); }
+
+  .displays{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .display-block{ background:var(--lcd-bg); border-radius:8px; padding:8px 6px; text-align:center; border:1px solid #000; }
+  .display-label{ font-size:12px; color:var(--text-dim); margin-bottom:2px; }
+  .display-value{ font-family:var(--font-lcd); font-size:22px; color:var(--green); }
+
+  .status-line{ background:var(--lcd-bg); border-radius:8px; padding:8px 14px; font-family:var(--font-lcd); font-size:13px; color:var(--amber); min-height:18px; }
+
+  .controls{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .control-label{ font-size:13px; color:var(--text-dim); text-align:center; margin-bottom:5px; }
+  .stepper{ display:flex; background:var(--panel); border-radius:8px; overflow:hidden; }
+  .stepper button{ flex:1; padding:8px 0; background:var(--panel-raised); color:var(--text-bright); border:none; font-size:16px; cursor:pointer; }
+  .stepper button:active{ background:#20242a; }
+  .toggle{ background:var(--panel-raised); border-radius:8px; text-align:center; padding:8px 0; cursor:pointer; font-size:14px; user-select:none; }
+
+  .exposure-row{ display:flex; gap:10px; }
+  .exposure-row button{ flex:1; padding:13px 0; border-radius:10px; border:none; font-family:var(--font-label); font-size:16px; font-weight:600; letter-spacing:.03em; cursor:pointer; touch-action:none; user-select:none; }
+  .btn-prep{ background:#3a5f7d; color:#eaf3fb; transition:filter .15s; }
+  .btn-prep.holding{ filter:brightness(1.25); }
+  .btn-expose{ background:#8a3b2e; color:#fdece7; }
+  .btn-expose:disabled{ opacity:.4; cursor:not-allowed; }
+  .btn-reset{ background:var(--panel-raised); color:var(--text-bright); flex:0 0 90px; }
+
+  button:focus-visible, select:focus-visible, .toggle:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
+
+  .instructor-panel{ border:1px dashed #6b4a2a; border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  .instructor-label{ font-size:12px; color:#c98a4b; }
+  select{ background:var(--panel-raised); color:var(--text-bright); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-family:var(--font-label); font-size:13px; }
+
+  .mode-tabs{ display:flex; gap:8px; margin-bottom:14px; }
+  .mode-tab{ flex:1; padding:9px 0; background:var(--panel-raised); color:var(--text-dim); border:none; border-radius:8px; font-family:var(--font-label); font-size:14px; font-weight:600; cursor:pointer; }
+  .mode-tab.active{ background:var(--panel); color:var(--text-bright); box-shadow:inset 0 0 0 1px var(--border); }
+
+  .qa-intro{ font-size:12px; color:var(--text-dim); margin-bottom:12px; }
+  .qa-rig{ margin-bottom:14px; }
+  .qa-rig-label{ font-size:12px; fill:#9aa0a6; font-family:'Barlow Condensed', sans-serif; }
+  #qa-beam-cone{ opacity:0; transition:opacity .15s; }
+  #qa-beam-cone.active{ opacity:.6; animation:pulseCone .5s ease-in-out infinite; }
+  .qa-meter-reading{ font-family:var(--font-lcd); font-size:20px; fill:#5a6570; }
+  .qa-meter-reading.ok{ fill:var(--green); }
+  .qa-meter-reading.fault{ fill:var(--red); }
+  .qa-meter-btn-group{ cursor:pointer; }
+  .qa-meter-btn-group circle{ transition:fill .15s; }
+  .qa-meter-btn-group:hover circle{ fill:#3a3f46; }
+  .qa-meter-btn-group:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
+  #qa-btn-hold.active circle{ fill:var(--amber); stroke:#c98a4b; }
+  .qa-technique-row{ display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; background:var(--panel); border-radius:10px; padding:10px 14px; margin-bottom:12px; font-size:12px; color:var(--text-dim); }
+  .qa-technique-row span{ color:var(--text-bright); font-family:var(--font-lcd); }
+  .qa-fire-row{ display:flex; gap:10px; margin-bottom:14px; }
+  .qa-fire-row button{ padding:13px 0; border-radius:10px; border:none; font-family:var(--font-label); font-size:15px; font-weight:600; cursor:pointer; }
+  #qa-fire-btn{ flex:1; background:#3a5f7d; color:#eaf3fb; }
+  #qa-fire-btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .qa-fire-row .btn-reset{ flex:0 0 90px; }
+  .aec-action-btn{ flex:1; background:#3a5f7d; color:#eaf3fb; padding:13px 0; border-radius:10px; border:none; font-family:var(--font-label); font-size:15px; font-weight:600; cursor:pointer; }
+  .aec-action-btn:disabled{ opacity:.5; cursor:not-allowed; }
+  #aec-beam-cone{ opacity:0; transition:opacity .15s; }
+  #aec-beam-cone.active{ opacity:.6; animation:pulseCone .5s ease-in-out infinite; }
+  .aec-chamber-seg{ fill:#2c333a; stroke:#3a4550; stroke-width:1; transition:fill .15s, stroke .15s; }
+  .aec-chamber-seg.selected{ stroke:#9fd3ff; stroke-width:2; }
+  .aec-chamber-seg.firing{ fill:#ffb74a; stroke:#c98a4b; }
+
+  .chamber-row{ margin-bottom:10px; }
+  .inactive-controls{ opacity:.35; pointer-events:none; transition:opacity .2s; }
+  .chamber-select{ display:flex; gap:6px; }
+  .chamber-btn{ flex:1; padding:8px 0; background:var(--panel-raised); color:var(--text-dim); border:none; border-radius:8px; font-family:var(--font-label); font-size:14px; font-weight:600; cursor:pointer; }
+  .chamber-btn.active{ background:var(--panel); color:var(--text-bright); box-shadow:inset 0 0 0 1px var(--border); }
+
+  .qa-section-divider{ font-size:13px; font-weight:600; color:var(--text-bright); margin:18px 0 6px; padding-top:14px; border-top:1px solid var(--border); }
+  .aec-protocol-summary{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  .aec-test-card{ background:var(--panel); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+  .aec-test-title{ font-size:14px; font-weight:600; color:var(--text-bright); margin-bottom:4px; }
+  .aec-test-desc{ font-size:12px; color:var(--text-dim); margin-bottom:10px; }
+
+  .loop-box rect{ fill:var(--panel-raised); stroke:var(--border); stroke-width:1.5; transition:fill .2s, stroke .2s; }
+  .loop-box.active rect{ fill:#3a5f7d; stroke:#9fd3ff; stroke-width:2; }
+  .loop-box.terminate-ok rect{ fill:#20402c; stroke:#4ce07a; stroke-width:2; }
+  .loop-box.terminate-fault rect{ fill:#5a2622; stroke:#e5484d; stroke-width:2; }
+  .loop-box-title{ font-size:13px; font-weight:600; fill:var(--text-bright); font-family:'Barlow Condensed', sans-serif; }
+  .loop-box-sub{ font-size:10px; fill:var(--text-dim); font-family:'Barlow Condensed', sans-serif; }
+  .loop-arrow{ stroke-width:1.5; opacity:.4; transition:opacity .15s, stroke .15s; }
+  .loop-arrow.active{ opacity:1; stroke:#ffb74a !important; stroke-width:2.5; }
+  .loop-arrow.exit.active{ stroke:#4ce07a !important; }
+
+  .aec-loop-readout{ display:flex; justify-content:space-between; font-size:13px; color:var(--text-dim); font-family:var(--font-lcd); margin:10px 0 6px; }
+  .aec-loop-readout span{ color:var(--text-bright); }
+  .aec-loop-bar-track{ background:var(--lcd-bg); border-radius:6px; height:14px; overflow:hidden; margin-bottom:14px; }
+  .aec-loop-bar-fill{ height:100%; width:0%; background:#4ce07a; transition:width .18s linear, background .2s; }
+  .aec-loop-bar-fill.over{ background:#e5484d; }
+  .aec-loop-bar-fill.stalled{ background:#ffb74a; }
+
+  .qa-table{ width:100%; border-collapse:collapse; background:var(--lcd-bg); border-radius:8px; overflow:hidden; margin-bottom:14px; font-size:13px; }
+  .qa-table th, .qa-table td{ padding:7px 8px; text-align:center; }
+  .qa-table th{ color:var(--text-dim); font-family:var(--font-label); font-weight:600; font-size:11px; border-bottom:1px solid var(--border); }
+  .qa-table td{ color:var(--text-bright); font-family:var(--font-lcd); }
+
+  .qa-result{ background:var(--panel); border-radius:10px; padding:12px 14px; font-size:13px; color:var(--text-dim); }
+  .qa-metric{ padding:4px 0; font-family:var(--font-lcd); font-size:13px; }
+  .qa-metric.pass{ color:var(--green); }
+  .qa-metric.fail{ color:var(--red); }
+  .qa-note{ color:var(--amber); font-size:11px; }
+  #qa-source-label.qa-source-manual{ color:var(--green); }
+  #qa-source-label.qa-source-aec{ color:var(--amber); }
+
+  @media (max-width:640px){
+    .main-grid{ grid-template-columns:1fr; gap:10px; }
+    .main-grid > *{ grid-column:auto; grid-row:auto; }
+    /* .main-grid .tube-bay (desktop rule) sets grid-column:2, which has higher
+       specificity than the reset above and would otherwise keep winning here,
+       forcing a phantom second column instead of letting the tube stack with
+       everything else. Match that specificity explicitly so this reset wins. */
+    .main-grid .tube-bay{ grid-column:auto; grid-row:auto; align-self:auto; }
+  }
+
+  @media (max-width:480px){
+    .displays, .controls{ grid-template-columns:repeat(2,1fr); }
+    .exposure-row{ flex-wrap:wrap; }
+    .btn-reset{ flex:1 1 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="console">
+  <div class="console-header">
+    <div class="brand">TRAINER CONSOLE</div>
+    <div class="model">HF-100 &middot; high-frequency generator simulator</div>
+  </div>
+
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="tab-operate" onclick="switchMode('operate')">Operate</button>
+    <button class="mode-tab" id="tab-qa" onclick="switchMode('qa')">QA / Calibration</button>
+    <button class="mode-tab" id="tab-signals" onclick="switchMode('signals')">Signals</button>
+  </div>
+
+  <div class="main-grid" id="operate-panel">
+  <div class="tube-bay">
+    <svg viewBox="0 0 640 330" width="100%" role="img" aria-label="Schematic of the X-ray tube showing thermionic emission, electrons striking the stationary anode, and the beam passing through a patient phantom onto the AEC chambers and image receptor">
+      <defs>
+        <radialGradient id="emissionGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffb74a" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#ffb74a" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="tubeHousingGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#4a4f56"/>
+          <stop offset="50%" stop-color="#2c2f34"/>
+          <stop offset="100%" stop-color="#1a1d21"/>
+        </linearGradient>
+        <linearGradient id="tubeGlassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#6a86a0" stop-opacity="0.85"/>
+          <stop offset="14%" stop-color="#9db4c8" stop-opacity="0.5"/>
+          <stop offset="38%" stop-color="#3d5468" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#232f3a" stop-opacity="0.95"/>
+        </linearGradient>
+        <linearGradient id="tubeCopperGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#b08a5f"/>
+          <stop offset="50%" stop-color="#8a6a4a"/>
+          <stop offset="100%" stop-color="#6b503a"/>
+        </linearGradient>
+        <linearGradient id="tubeCupGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#3a3f46"/>
+          <stop offset="100%" stop-color="#20262c"/>
+        </linearGradient>
+      </defs>
+      <rect x="15" y="15" width="610" height="180" rx="18" fill="url(#tubeHousingGrad)" stroke="#0f1113" stroke-width="2"/>
+      <rect x="300" y="0" width="40" height="17" rx="4" fill="#3a3f46"/>
+      <circle cx="600" cy="40" r="11" fill="#20242a" stroke="#4a4f56" stroke-width="1.5"/>
+      <rect x="458" y="188" width="82" height="10" fill="#0d0f11"/>
+      <rect x="60" y="55" width="520" height="100" rx="50" fill="url(#tubeGlassGrad)" stroke="#5a7690" stroke-width="1.5"/>
+      <rect x="60" y="97" width="30" height="16" rx="3" fill="#4a4f56"/>
+      <path d="M90,80 L90,130 L175,117 L175,93 Z" fill="url(#tubeCupGrad)" stroke="#14161a" stroke-width="1.5"/>
+      <g class="filament-unit" id="filament-fine-unit">
+        <ellipse class="emission-cloud" cx="128" cy="98" rx="30" ry="16"/>
+        <path class="filament" id="filament-fine" d="M108 98 l5 -4 l5 4 l5 -4 l5 4 l5 -4 l5 4 l5 -4 l5 4"/>
+      </g>
+      <g class="filament-unit" id="filament-broad-unit">
+        <ellipse class="emission-cloud" cx="128" cy="112" rx="30" ry="16"/>
+        <path class="filament" id="filament-broad" d="M108 112 l5 4 l5 -4 l5 4 l5 -4 l5 4 l5 -4 l5 4 l5 -4"/>
+      </g>
+      <line id="beam-electron" x1="175" y1="105" x2="475" y2="105" stroke="#9fd3ff" stroke-width="2" stroke-dasharray="4 3"/>
+      <g id="electron-stream" class="electron-stream">
+        <circle r="2.4" fill="#9fd3ff"><animateMotion dur="0.45s" repeatCount="indefinite" path="M175,105 L473,105"/></circle>
+        <circle r="2.4" fill="#9fd3ff"><animateMotion dur="0.45s" repeatCount="indefinite" begin="0.15s" path="M175,105 L473,105"/></circle>
+        <circle r="2.4" fill="#9fd3ff"><animateMotion dur="0.45s" repeatCount="indefinite" begin="0.3s" path="M175,105 L473,105"/></circle>
+      </g>
+      <rect id="anode-disc" x="480" y="75" width="70" height="60" rx="6" fill="url(#tubeCopperGrad)" stroke="#5a4530" stroke-width="2"/>
+      <rect x="550" y="93" width="45" height="24" rx="4" fill="url(#tubeCopperGrad)" stroke="#5a4530" stroke-width="1.5"/>
+      <polygon points="480,83 480,127 505,105" fill="#d4d8dc" stroke="#8a9099" stroke-width="1.5"/>
+      <g id="anode-damage-marks" class="anode-damage-marks">
+        <path d="M485,94 L490,101 L487,104 L493,111 L489,117" stroke="#1a1a1a" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        <circle cx="483" cy="99" r="1.4" fill="#1a1a1a"/>
+        <circle cx="491" cy="114" r="1.2" fill="#1a1a1a"/>
+        <circle cx="486" cy="107" r="1" fill="#1a1a1a"/>
+      </g>
+      <circle id="impact-flash" cx="495" cy="105" r="10" fill="#fff3d6"/>
+      <polygon id="xray-cone" points="495,127 445,225 545,225" fill="#ffb74a"/>
+      <text x="130" y="172" text-anchor="middle" font-size="12" fill="#9aa0a6" font-family="Barlow Condensed, sans-serif">Cathode assembly</text>
+      <text x="530" y="150" text-anchor="middle" font-size="12" fill="#9aa0a6" font-family="Barlow Condensed, sans-serif">Stationary anode</text>
+
+      <g id="downstream-assembly">
+        <rect id="phantom-block" x="440" y="225" width="110" height="40" fill="#c98a6b" stroke="#a06a4e" stroke-width="1.5" opacity="0.85"/>
+        <text class="tube-downstream-label" x="420" y="248" text-anchor="end" font-size="11" fill="#9aa0a6" font-family="Barlow Condensed, sans-serif">Patient (phantom)</text>
+
+        <g id="chamber-group">
+          <rect id="chamber-seg-L" class="chamber-seg" x="440" y="270" width="34" height="8" rx="2"/>
+          <rect id="chamber-seg-C" class="chamber-seg selected" x="478" y="270" width="34" height="8" rx="2"/>
+          <rect id="chamber-seg-R" class="chamber-seg" x="516" y="270" width="34" height="8" rx="2"/>
+        </g>
+        <text class="tube-downstream-label" x="420" y="278" text-anchor="end" font-size="11" fill="#9aa0a6" font-family="Barlow Condensed, sans-serif">AEC chambers</text>
+
+        <rect x="435" y="284" width="120" height="10" rx="2" fill="#2c2f34" stroke="#4a4f56" stroke-width="1"/>
+        <text class="tube-downstream-label" x="420" y="293" text-anchor="end" font-size="11" fill="#9aa0a6" font-family="Barlow Condensed, sans-serif">Image receptor</text>
+      </g>
+    </svg>
+    <div class="status-leds">
+      <div class="led rotor" id="led-rotor"><span class="dot"></span>Filament ready</div>
+      <div class="led expose" id="led-expose"><span class="dot"></span>Exposing</div>
+      <div class="led fault" id="led-fault"><span class="dot"></span>Fault</div>
+    </div>
+    <div class="sim-note">Exposure is held visible for about 3.5s so you can read it &mdash; real exposures last only milliseconds.</div>
+  </div>
+
+  <div class="displays">
+    <div class="display-block"><div class="display-label">kV</div><div class="display-value" id="disp-kv">80</div></div>
+    <div class="display-block"><div class="display-label">mA</div><div class="display-value" id="disp-ma">200</div></div>
+    <div class="display-block"><div class="display-label">time ms</div><div class="display-value" id="disp-time">100</div></div>
+    <div class="display-block"><div class="display-label">mAs</div><div class="display-value" id="disp-mas">20.0</div></div>
+  </div>
+
+  <div class="status-line" id="status-line" aria-live="polite">Ready to prepare exposure.</div>
+
+  <div class="controls">
+    <div>
+      <div class="control-label">kV</div>
+      <div class="stepper"><button onclick="stepKv(-1)" aria-label="Decrease kV">&ndash;</button><button onclick="stepKv(1)" aria-label="Increase kV">+</button></div>
+    </div>
+    <div>
+      <div class="control-label" id="ma-control-label">mA station</div>
+      <div class="stepper"><button onclick="stepMa(-1)" aria-label="Previous mA station">&ndash;</button><button onclick="stepMa(1)" aria-label="Next mA station">+</button></div>
+    </div>
+    <div id="time-control-wrap">
+      <div class="control-label">Time</div>
+      <div class="stepper"><button onclick="stepTime(-1)" aria-label="Previous time station">&ndash;</button><button onclick="stepTime(1)" aria-label="Next time station">+</button></div>
+    </div>
+    <div>
+      <div class="control-label">Focal spot</div>
+      <div class="toggle" id="focal-toggle" role="button" tabindex="0" onclick="toggleFocal()" onkeydown="if(event.key==='Enter'||event.key===' '){toggleFocal()}">Small</div>
+    </div>
+  </div>
+
+  <div class="chamber-row">
+    <div class="control-label">Exposure mode</div>
+    <div class="chamber-select">
+      <button class="chamber-btn active" id="mode-btn-manual" onclick="setExposureMode('manual')">Manual</button>
+      <button class="chamber-btn" id="mode-btn-aec" onclick="setExposureMode('aec')">AEC</button>
+    </div>
+  </div>
+
+  <div class="controls" id="aec-controls-row">
+    <div>
+      <div class="control-label" id="aec-phantom-label">Phantom</div>
+      <div class="stepper"><button onclick="stepPhantom(-1)" aria-label="Thinner phantom">&ndash;</button><button onclick="stepPhantom(1)" aria-label="Thicker phantom">+</button></div>
+    </div>
+    <div>
+      <div class="control-label" id="aec-density-label">Density</div>
+      <div class="stepper"><button onclick="stepDensity(-1)" aria-label="Decrease density">&ndash;</button><button onclick="stepDensity(1)" aria-label="Increase density">+</button></div>
+    </div>
+    <div>
+      <div class="control-label">AEC chamber</div>
+      <div class="chamber-select">
+        <button class="chamber-btn" id="chamber-btn-L" onclick="selectChamber('L')">L</button>
+        <button class="chamber-btn active" id="chamber-btn-C" onclick="selectChamber('C')">C</button>
+        <button class="chamber-btn" id="chamber-btn-R" onclick="selectChamber('R')">R</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="exposure-row">
+    <button class="btn-prep" id="btn-prep"
+      onpointerdown="startPrep(event)" onpointerup="endPrep(event)" onpointerleave="endPrep(event)" onpointercancel="endPrep(event)"
+      onkeydown="handlePrepKeydown(event)" onkeyup="handlePrepKeyup(event)">Prepare</button>
+    <button class="btn-expose" id="btn-expose" onclick="expose()" disabled>Expose</button>
+    <button class="btn-reset" onclick="resetAll()">Reset</button>
+  </div>
+
+  <div class="instructor-panel">
+    <div class="instructor-label">INSTRUCTOR &middot; FAULT INJECTION</div>
+    <select id="fault-select" onchange="setFault(this.value)">
+      <option value="normal">Normal operation</option>
+      <option value="filament">Fault: open filament</option>
+      <option value="dcbus">Fault: DC bus capacitor degraded</option>
+      <option value="hvrect">Fault: HV rectifier diode failure</option>
+      <option value="aecchamber">Fault: AEC chamber not responding</option>
+      <option value="anodedamage">Fault: anode target damaged (pitting)</option>
+    </select>
+  </div>
+  </div>
+
+  <div class="qa-panel" id="qa-panel" style="display:none">
+    <div class="qa-intro">Real acceptance testing never trusts the console's own numbers &mdash; it checks them with an independent meter. This simulates that same check: fire the same technique three times, in Manual or AEC mode, and see whether the machine is within tolerance.</div>
+
+    <div class="tube-bay qa-rig">
+      <svg viewBox="0 0 640 260" width="100%" role="img" aria-label="Illustration of an X-ray tube housing producing a beam, measured by an independent detector paddle and a multi-parameter digital meter showing kV, time, and dose">
+        <defs>
+          <linearGradient id="housingGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#e7e9ec"/>
+            <stop offset="45%" stop-color="#b8bcc2"/>
+            <stop offset="100%" stop-color="#7c8188"/>
+          </linearGradient>
+          <linearGradient id="meterGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#3a3f46"/>
+            <stop offset="100%" stop-color="#20242a"/>
+          </linearGradient>
+        </defs>
+
+        <rect x="185" y="8" width="30" height="14" rx="3" fill="#4a4f56"/>
+        <ellipse cx="200" cy="58" rx="95" ry="44" fill="url(#housingGrad)" stroke="#5a5f66" stroke-width="2"/>
+        <circle cx="270" cy="58" r="9" fill="#2c2f34" stroke="#4a4f56" stroke-width="1.5"/>
+        <rect x="168" y="92" width="64" height="32" rx="5" fill="#6a6f76" stroke="#4a4f56" stroke-width="1.5"/>
+        <rect x="190" y="114" width="20" height="12" fill="#14161a"/>
+        <text class="qa-rig-label" x="200" y="145" text-anchor="middle">X-ray tube housing</text>
+
+        <polygon id="qa-beam-cone" points="200,124 155,205 245,205" fill="#ffb74a"/>
+
+        <rect x="130" y="207" width="150" height="6" fill="#3a3f46"/>
+        <rect x="145" y="196" width="110" height="12" rx="3" fill="#3a4550" stroke="#5a6570" stroke-width="1.5"/>
+        <text class="qa-rig-label" x="200" y="228" text-anchor="middle">Detector paddle</text>
+
+        <path d="M255 202 C 320 202, 355 170, 390 132" stroke="#5a6570" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+        <rect x="390" y="45" width="170" height="175" rx="12" fill="url(#meterGrad)" stroke="#6b7280" stroke-width="2"/>
+
+        <rect x="404" y="58" width="142" height="90" rx="4" fill="#0d1210" stroke="#000"/>
+        <line x1="404" y1="88" x2="546" y2="88" stroke="#22262b" stroke-width="1"/>
+        <line x1="404" y1="118" x2="546" y2="118" stroke="#22262b" stroke-width="1"/>
+        <text x="412" y="73" font-size="11" font-family="Share Tech Mono, monospace" fill="#6b7280">kV</text>
+        <text class="qa-meter-reading" id="qa-meter-kv" x="536" y="73" text-anchor="end" dominant-baseline="middle">&mdash;</text>
+        <text x="412" y="103" font-size="11" font-family="Share Tech Mono, monospace" fill="#6b7280">ms</text>
+        <text class="qa-meter-reading" id="qa-meter-ms" x="536" y="103" text-anchor="end" dominant-baseline="middle">&mdash;</text>
+        <text id="qa-meter-dose-unit" x="412" y="133" font-size="11" font-family="Share Tech Mono, monospace" fill="#6b7280">mGy</text>
+        <text class="qa-meter-reading" id="qa-meter-dose" x="536" y="133" text-anchor="end" dominant-baseline="middle">&mdash;</text>
+
+        <g class="qa-meter-btn-group" onclick="meterZero()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();meterZero();}" tabindex="0" role="button" aria-label="Zero the meter display">
+          <circle cx="425" cy="178" r="12" fill="#2c2f34" stroke="#14161a" stroke-width="1.5"/>
+          <text x="425" y="200" text-anchor="middle" class="qa-rig-label" font-size="9">ZERO</text>
+        </g>
+        <g class="qa-meter-btn-group" id="qa-btn-hold" onclick="meterToggleHold()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();meterToggleHold();}" tabindex="0" role="button" aria-pressed="false" aria-label="Toggle hold, keeping the last reading on screen">
+          <circle cx="475" cy="178" r="12" fill="#2c2f34" stroke="#14161a" stroke-width="1.5"/>
+          <text x="475" y="200" text-anchor="middle" class="qa-rig-label" font-size="9">HOLD</text>
+        </g>
+        <g class="qa-meter-btn-group" onclick="meterToggleUnits()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();meterToggleUnits();}" tabindex="0" role="button" aria-label="Toggle dose units between mGy and mR">
+          <circle cx="525" cy="178" r="12" fill="#2c2f34" stroke="#14161a" stroke-width="1.5"/>
+          <text x="525" y="200" text-anchor="middle" class="qa-rig-label" font-size="9">UNITS</text>
+        </g>
+
+        <text class="qa-rig-label" x="475" y="240" text-anchor="middle">Independent multi-parameter meter</text>
+      </svg>
+    </div>
+    <div class="sim-note">ZERO clears the display, HOLD keeps a reading on screen instead of it clearing after a few seconds, and UNITS switches dose between mGy and mR.</div>
+
+    <div class="qa-technique-row">
+      <div>Test source: <span id="qa-source-label" class="qa-source-manual">MANUAL</span></div>
+      <div>Technique: <span id="qa-technique-label">80 kV / 200 mA / 100 ms</span></div>
+      <div>Generator state: <span id="qa-fault-label">Normal operation</span></div>
+    </div>
+
+    <div class="qa-fire-row">
+      <button id="qa-fire-btn" onclick="qaFire()">Fire &amp; Measure (0/3)</button>
+      <button class="btn-reset" onclick="qaClear()">Clear</button>
+    </div>
+
+    <table class="qa-table">
+      <thead><tr><th>#</th><th>kV</th><th>Error</th><th>Time</th><th>Dose</th><th>Note</th></tr></thead>
+      <tbody id="qa-table-body"></tbody>
+    </table>
+
+    <div class="qa-result" id="qa-result">Take 3 readings at the same technique to compute accuracy and reproducibility.</div>
+  </div>
+
+  <div class="waveforms" id="waveform-panel" style="display:none" aria-label="Live signal waveforms from mains input to the X-ray tube load">
+    <div class="section-label">SIGNAL PATH &middot; MAINS TO LOAD</div>
+    <div class="sim-note">The last exposure's trace stays lit in amber until you press Reset.</div>
+
+    <div class="signal-group-label permanent">PERMANENT SIGNALS &middot; always present</div>
+    <div class="scope">
+      <div class="scope-label">Mains &middot; single-phase AC</div>
+      <svg class="scope-svg" viewBox="0 0 60 40" preserveAspectRatio="none" aria-hidden="true">
+        <line class="scope-baseline" x1="0" y1="20" x2="60" y2="20"/>
+        <g>
+          <path class="scope-trace" d="M0 20 C7.5 2,22.5 2,30 20 C37.5 38,52.5 38,60 20 C67.5 2,82.5 2,90 20 C97.5 38,112.5 38,120 20"/>
+          <animateTransform attributeName="transform" type="translate" from="0 0" to="-60 0" dur="1.6s" repeatCount="indefinite"/>
+        </g>
+      </svg>
+      <div class="scope-axis"><span>Y &plusmn;325V pk</span><span>X 20ms &middot; 50Hz</span></div>
+    </div>
+
+    <div class="scope">
+      <div class="scope-label">DC bus &middot; rectified + filtered</div>
+      <svg class="scope-svg" viewBox="0 0 60 40" preserveAspectRatio="none" aria-hidden="true">
+        <line class="scope-baseline" x1="0" y1="20" x2="60" y2="20"/>
+        <g>
+          <path class="scope-trace" id="dcbus-path" d="M0 20 Q5 15 10 20 Q15 25 20 20 Q25 15 30 20 Q35 25 40 20 Q45 15 50 20 Q55 25 60 20 Q65 15 70 20 Q75 25 80 20"/>
+          <animateTransform attributeName="transform" type="translate" from="0 0" to="-20 0" dur="1s" repeatCount="indefinite"/>
+        </g>
+      </svg>
+      <div class="scope-axis"><span>Y <span id="dcbus-axis-y">&asymp;310V DC</span></span><span>X 100Hz ripple</span></div>
+    </div>
+
+    <div class="signal-group-label ephemeral">EPHEMERAL SIGNALS &middot; only during exposure</div>
+    <div class="scope">
+      <div class="scope-label">HF inverter output</div>
+      <svg class="scope-svg" viewBox="0 0 60 40" preserveAspectRatio="none" aria-hidden="true">
+        <line class="scope-baseline" x1="0" y1="20" x2="60" y2="20"/>
+        <g class="trace-gated">
+          <path class="scope-trace" d="M0 8 L6 8 L6 32 L12 32 L12 8 L18 8 L18 32 L24 32 L24 8 L30 8 L30 32 L36 32 L36 8 L42 8 L42 32 L48 32 L48 8 L54 8 L54 32 L60 32 L60 8 L66 8 L66 32 L72 32"/>
+          <animateTransform attributeName="transform" type="translate" from="0 0" to="-12 0" dur="0.3s" repeatCount="indefinite"/>
+        </g>
+      </svg>
+      <div class="scope-axis"><span>Y &asymp;310V pk</span><span>X 25&micro;s &middot; 40kHz</span></div>
+    </div>
+
+    <div class="scope">
+      <div class="scope-label">HV tank &middot; stepped up + rectified</div>
+      <svg class="scope-svg" viewBox="0 0 60 40" preserveAspectRatio="none" aria-hidden="true">
+        <line class="scope-baseline" x1="0" y1="20" x2="60" y2="20"/>
+        <g class="trace-gated">
+          <path class="scope-trace" id="hv-path" d="M0 20 Q4 17 8 20 Q12 23 16 20 Q20 17 24 20 Q28 23 32 20 Q36 17 40 20 Q44 23 48 20 Q52 17 56 20 Q60 23 64 20 Q68 17 72 20 Q76 23 80 20"/>
+          <animateTransform attributeName="transform" type="translate" from="0 0" to="-16 0" dur="0.35s" repeatCount="indefinite"/>
+        </g>
+      </svg>
+      <div class="scope-axis"><span>Y <span id="hv-axis-y">&mdash;</span></span><span>X &asymp;80kHz ripple</span></div>
+    </div>
+
+    <div class="scope">
+      <div class="scope-label">Tube current &middot; load</div>
+      <svg class="scope-svg" viewBox="0 0 60 40" preserveAspectRatio="none" aria-hidden="true">
+        <line class="scope-baseline load-baseline" x1="0" y1="30" x2="60" y2="30"/>
+        <path class="scope-trace load-trace" d="M0 30 L10 30 L10 10 L50 10 L50 30 L60 30"/>
+      </svg>
+      <div class="scope-axis"><span>Y <span id="load-axis-y">&mdash;</span></span><span>X <span id="load-axis-x">&mdash;</span></span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const maStations = [50,100,160,200,250,320,400,500,630];
+// Real small (fine) focal spots have far less thermal capacity than large (broad)
+// spots, so tube rating charts cap their maximum mA well below the broad spot's.
+const SMALL_FOCAL_MAX_MA_IDX = 5; // caps small focal spot at 320 mA; 400/500/630 need large
+const timeStations = [10,20,40,80,100,160,200,320,500,800];
+
+const state = {
+  kv: 80,
+  maIdx: maStations.indexOf(200),
+  timeIdx: timeStations.indexOf(100),
+  focal: 'small',
+  fault: 'normal',
+  stage: 'idle',
+  aecOn: false,
+  phantomIdx: 2,
+  density: 0,
+  chamber: 'C'
+};
+
+const PREP_HOLD_MS = 800;
+const EXPOSURE_VISUAL_MS = 3500;
+let prepTimer = null;
+
+const FAULT_LABELS = {
+  normal: 'Normal operation',
+  filament: 'Open filament',
+  dcbus: 'DC bus capacitor degraded',
+  hvrect: 'HV rectifier diode failure',
+  aecchamber: 'AEC chamber not responding (Left)',
+  anodedamage: 'Anode target damaged (pitting)'
+};
+
+function $(id){ return document.getElementById(id); }
+
+function render(){
+  $('disp-kv').textContent = state.kv;
+  $('disp-ma').textContent = maStations[state.maIdx];
+  $('focal-toggle').textContent = state.focal === 'small' ? 'Small' : 'Large';
+  $('ma-control-label').textContent = state.focal === 'small' ? 'mA station (max ' + maStations[SMALL_FOCAL_MAX_MA_IDX] + ')' : 'mA station';
+
+  $('time-control-wrap').classList.toggle('inactive-controls', state.aecOn);
+  $('aec-controls-row').classList.toggle('inactive-controls', !state.aecOn);
+  $('downstream-assembly').classList.toggle('inactive-controls', !state.aecOn);
+  $('mode-btn-manual').classList.toggle('active', !state.aecOn);
+  $('mode-btn-aec').classList.toggle('active', state.aecOn);
+
+  if(state.aecOn){
+    $('disp-time').textContent = 'auto';
+    $('disp-mas').textContent = 'auto';
+  } else {
+    $('disp-time').textContent = timeStations[state.timeIdx];
+    const mAs = maStations[state.maIdx] * timeStations[state.timeIdx] / 1000;
+    $('disp-mas').textContent = mAs.toFixed(1);
+  }
+
+  const thickness = phantomStations[state.phantomIdx];
+  $('aec-phantom-label').textContent = 'Phantom (' + thickness + 'cm)';
+  $('aec-density-label').textContent = 'Density (' + (state.density > 0 ? '+' : '') + state.density + ')';
+
+  $('qa-technique-label').textContent = state.aecOn
+    ? state.kv + ' kV / ' + maStations[state.maIdx] + ' mA / ' + thickness + 'cm phantom / density ' + (state.density > 0 ? '+' : '') + state.density + ' / chamber ' + state.chamber
+    : state.kv + ' kV / ' + maStations[state.maIdx] + ' mA / ' + timeStations[state.timeIdx] + ' ms';
+  $('qa-source-label').textContent = state.aecOn ? 'AEC' : 'MANUAL';
+  $('qa-source-label').className = state.aecOn ? 'qa-source-aec' : 'qa-source-manual';
+  $('qa-fault-label').textContent = FAULT_LABELS[state.fault];
+  qaUpdateFireButton();
+}
+
+function setStatus(msg){ $('status-line').textContent = msg; }
+
+function stepKv(d){
+  if(state.stage !== 'idle') return;
+  state.kv = Math.min(125, Math.max(40, state.kv + d));
+  render();
+}
+function stepMa(d){
+  if(state.stage !== 'idle') return;
+  const maxIdx = state.focal === 'small' ? SMALL_FOCAL_MAX_MA_IDX : maStations.length - 1;
+  state.maIdx = Math.min(maxIdx, Math.max(0, state.maIdx + d));
+  render();
+}
+function stepTime(d){
+  if(state.stage !== 'idle' || state.aecOn) return;
+  state.timeIdx = Math.min(timeStations.length-1, Math.max(0, state.timeIdx + d));
+  render();
+}
+function toggleFocal(){
+  if(state.stage !== 'idle') return;
+  state.focal = state.focal === 'small' ? 'large' : 'small';
+  if(state.focal === 'small' && state.maIdx > SMALL_FOCAL_MAX_MA_IDX){
+    state.maIdx = SMALL_FOCAL_MAX_MA_IDX;
+  }
+  render();
+}
+
+function setExposureMode(mode){
+  if(state.stage !== 'idle') return;
+  state.aecOn = mode === 'aec';
+  render();
+}
+function stepPhantom(d){
+  if(state.stage !== 'idle' || !state.aecOn) return;
+  state.phantomIdx = Math.min(phantomStations.length - 1, Math.max(0, state.phantomIdx + d));
+  render();
+}
+function stepDensity(d){
+  if(state.stage !== 'idle' || !state.aecOn) return;
+  state.density = Math.min(2, Math.max(-2, state.density + d));
+  render();
+}
+function selectChamber(ch){
+  if(state.stage !== 'idle' || !state.aecOn) return;
+  state.chamber = ch;
+  ['L','C','R'].forEach(c => {
+    $('chamber-btn-' + c).classList.toggle('active', c === ch);
+    $('chamber-seg-' + c).classList.toggle('selected', c === ch);
+  });
+  render();
+}
+const WAVE_SHAPES = {
+  dcbusNormal: "M0 20 Q5 15 10 20 Q15 25 20 20 Q25 15 30 20 Q35 25 40 20 Q45 15 50 20 Q55 25 60 20 Q65 15 70 20 Q75 25 80 20",
+  dcbusDegraded: "M0 20 Q5 2 10 20 Q15 38 20 20 Q25 2 30 20 Q35 38 40 20 Q45 2 50 20 Q55 38 60 20 Q65 2 70 20 Q75 38 80 20",
+  hvNormal: "M0 20 Q4 17 8 20 Q12 23 16 20 Q20 17 24 20 Q28 23 32 20 Q36 17 40 20 Q44 23 48 20 Q52 17 56 20 Q60 23 64 20 Q68 17 72 20 Q76 23 80 20",
+  hvRippleDegraded: "M0 20 Q4 12 8 20 Q12 28 16 20 Q20 12 24 20 Q28 28 32 20 Q36 12 40 20 Q44 28 48 20 Q52 12 56 20 Q60 28 64 20 Q68 12 72 20 Q76 28 80 20",
+  hvArcing: "M0 20 L5 20 L5 3 L7 3 L7 20 L11 20 L11 35 L13 35 L13 20 L16 20 L21 20 L21 3 L23 3 L23 20 L27 20 L27 35 L29 35 L29 20 L32 20 L37 20 L37 3 L39 3 L39 20 L43 20 L43 35 L45 35 L45 20 L48 20 L53 20 L53 3 L55 3 L55 20 L59 20 L59 35 L61 35 L61 20 L64 20 L69 20 L69 3 L71 3 L71 20 L75 20 L75 35 L77 35 L77 20 L80 20"
+};
+
+function setFault(v){
+  state.fault = v;
+  resetAll();
+  $('anode-damage-marks').classList.toggle('visible', v === 'anodedamage');
+  $('dcbus-path').setAttribute('d', v === 'dcbus' ? WAVE_SHAPES.dcbusDegraded : WAVE_SHAPES.dcbusNormal);
+  $('dcbus-axis-y').textContent = v === 'dcbus' ? '\u2248310V \u00b140V' : '\u2248310V DC';
+  if(v === 'hvrect'){
+    $('hv-path').setAttribute('d', WAVE_SHAPES.hvArcing);
+  } else if(v === 'dcbus'){
+    $('hv-path').setAttribute('d', WAVE_SHAPES.hvRippleDegraded);
+  } else {
+    $('hv-path').setAttribute('d', WAVE_SHAPES.hvNormal);
+  }
+  setStatus(v === 'normal' ? 'Ready to prepare exposure.' : 'Fault armed: ' + FAULT_LABELS[v] + '. Ready to prepare.');
+  qaClear();
+}
+
+function startPrep(event){
+  if(event && event.preventDefault) event.preventDefault();
+  if(state.stage !== 'idle') return;
+  state.stage = 'prepping';
+  $('btn-prep').classList.add('holding');
+  $('btn-prep').textContent = 'Hold... preparing';
+  $('led-fault').classList.remove('on');
+  $('led-rotor').classList.remove('on','blink');
+  $('led-rotor').classList.add('blink');
+  $('filament-fine-unit').classList.remove('heating');
+  $('filament-broad-unit').classList.remove('heating');
+  setStatus('Keep holding Prepare: heating filament...');
+
+  const filId = state.focal === 'small' ? 'filament-fine-unit' : 'filament-broad-unit';
+  if(state.fault !== 'filament'){
+    $(filId).classList.add('heating');
+  }
+
+  prepTimer = setTimeout(() => {
+    $('btn-prep').classList.remove('holding');
+    $('btn-prep').textContent = 'Prepare';
+    state.stage = 'ready';
+    $('led-rotor').classList.remove('blink');
+    $('led-rotor').classList.add('on');
+    $('btn-expose').disabled = false;
+    setStatus('Ready. You can release Prepare now - press Expose to fire.');
+  }, PREP_HOLD_MS);
+}
+
+function endPrep(event){
+  if(state.stage === 'prepping'){
+    clearTimeout(prepTimer);
+    abortPrep();
+  }
+}
+
+function handlePrepKeydown(event){
+  if((event.key === 'Enter' || event.key === ' ') && !event.repeat){
+    event.preventDefault();
+    startPrep(event);
+  }
+}
+function handlePrepKeyup(event){
+  if(event.key === 'Enter' || event.key === ' '){
+    endPrep(event);
+  }
+}
+
+function abortPrep(){
+  state.stage = 'idle';
+  $('btn-prep').classList.remove('holding');
+  $('btn-prep').textContent = 'Prepare';
+  $('led-rotor').classList.remove('blink','on');
+  const filId = state.focal === 'small' ? 'filament-fine-unit' : 'filament-broad-unit';
+  $(filId).classList.remove('heating');
+  setStatus('Prepare released too early: sequence aborted. Press and hold Prepare again.');
+}
+
+function expose(){
+  if(state.stage !== 'ready') return;
+  state.stage = 'exposing';
+  $('btn-expose').disabled = true;
+  $('led-expose').classList.add('on');
+
+  const beam = $('beam-electron');
+  const cone = $('xray-cone');
+  const hvFault = state.fault === 'hvrect';
+  const anodeArc = state.fault === 'anodedamage' && Math.random() < 0.3;
+  const kv = state.kv;
+  const ma = maStations[state.maIdx];
+  const t = timeStations[state.timeIdx];
+  const chamberDead = state.fault === 'aecchamber' && state.chamber === 'L';
+  const aecResult = state.aecOn ? aecComputeExposure(kv, ma, phantomStations[state.phantomIdx], state.density, state.fault, chamberDead) : null;
+  const filamentOk = state.aecOn ? !aecResult.noSignal : (state.fault !== 'filament');
+  const effectiveKv = hvFault ? Math.round(kv * 0.6) : kv;
+  const effectiveMa = filamentOk ? (hvFault ? Math.round(ma * 0.85) : ma) : 0;
+
+  $('hv-axis-y').textContent = hvFault ? ('\u2248' + effectiveKv + 'kV (unstable)') : ('\u2248' + effectiveKv + 'kV DC');
+  $('load-axis-y').textContent = effectiveMa + 'mA';
+  $('load-axis-x').textContent = (state.aecOn ? '\u2014' : t) + 'ms';
+
+  $('waveform-panel').classList.remove('kv-shown','current-shown','load-fault-shown');
+  $('waveform-panel').classList.add('exposing');
+  if(filamentOk){
+    beam.classList.add('active');
+    cone.classList.add('active');
+    $('electron-stream').classList.add('active');
+    $('impact-flash').classList.add('active');
+    if(anodeArc){ $('impact-flash').classList.add('arc'); }
+    $('waveform-panel').classList.add('current-flowing');
+    if(state.aecOn){ $('chamber-seg-' + state.chamber).classList.add('firing'); }
+  }
+  setStatus('Exposing: X-rays being produced...');
+
+  setTimeout(() => {
+    $('led-expose').classList.remove('on');
+    beam.classList.remove('active');
+    cone.classList.remove('active');
+    $('electron-stream').classList.remove('active');
+    $('impact-flash').classList.remove('active','arc');
+    $('chamber-seg-L').classList.remove('firing');
+    $('chamber-seg-C').classList.remove('firing');
+    $('chamber-seg-R').classList.remove('firing');
+    $('waveform-panel').classList.remove('exposing','current-flowing');
+    $('waveform-panel').classList.add('kv-shown');
+    if(filamentOk){
+      $('waveform-panel').classList.add('current-shown');
+    } else {
+      $('waveform-panel').classList.add('load-fault-shown');
+    }
+    $('led-rotor').classList.remove('on','blink');
+    const filId = state.focal === 'small' ? 'filament-fine-unit' : 'filament-broad-unit';
+    $(filId).classList.remove('heating');
+
+    if(state.aecOn){
+      $('disp-time').textContent = aecResult.time.toFixed(1);
+      $('disp-mas').textContent = (ma * aecResult.time / 1000).toFixed(1);
+      if(aecResult.noSignal){
+        $('led-fault').classList.add('on');
+        setStatus('Backup timer engaged at ' + aecResult.backupTimeMs.toFixed(0) + ' ms: no signal reached the chamber. Check filament / cathode circuit, or try a different AEC chamber.');
+      } else if(aecResult.backupEngaged){
+        $('led-fault').classList.add('on');
+        setStatus('Backup timer engaged: target dose never reached. Exposure cut off at ' + aecResult.backupTimeMs.toFixed(0) + ' ms safety limit.');
+      } else if(aecResult.minResponseExceeded){
+        $('led-fault').classList.add('on');
+        setStatus('Minimum response time exceeded: terminated at ' + aecResult.time.toFixed(1) + ' ms, overexposing by about ' + aecResult.overPct.toFixed(0) + '%. Try a lower mA station for a phantom this thin.');
+      } else if(hvFault){
+        $('led-fault').classList.add('on');
+        setStatus('AEC terminated normally at ' + aecResult.time.toFixed(1) + ' ms \u2014 notice how long that took: reduced kV needs more time to reach the same target dose.');
+      } else if(state.fault === 'dcbus'){
+        $('led-fault').classList.add('on');
+        setStatus('AEC terminated normally at ' + aecResult.time.toFixed(1) + ' ms this time, but DC bus ripple makes this timing inconsistent \u2014 try firing again.');
+      } else {
+        setStatus('AEC terminated normally at ' + aecResult.time.toFixed(1) + ' ms (' + (ma * aecResult.time / 1000).toFixed(1) + ' mAs) \u2014 target dose reached, generator terminated cleanly.');
+      }
+    } else if(!filamentOk){
+      $('led-fault').classList.add('on');
+      setStatus('No exposure: 0 mA measured. Check filament / cathode circuit.');
+    } else if(hvFault){
+      $('led-fault').classList.add('on');
+      setStatus('Exposure abnormal: HV unstable, only \u2248' + effectiveKv + ' kV reached (set ' + kv + ' kV). Check HV rectifier.');
+    } else if(anodeArc){
+      $('led-fault').classList.add('on');
+      setStatus('Arc detected: anode target damage caused a momentary short. Exposure aborted for tube protection.');
+    } else if(state.fault === 'anodedamage'){
+      const swing = Math.round(kv * (Math.random() * 0.5 - 0.25));
+      $('led-fault').classList.add('on');
+      setStatus('Exposure completed, but kV fluctuated to about ' + (kv + swing) + ' kV partway through \u2014 consistent with a pitted anode target.');
+    } else {
+      const mAs = (ma * t / 1000);
+      const hu = Math.round(kv * mAs * 1.4);
+      setStatus('Exposure complete: ' + kv + ' kV, ' + ma + ' mA, ' + t + ' ms (' + mAs.toFixed(1) + ' mAs, approx ' + hu + ' HU).');
+    }
+    state.stage = 'idle';
+  }, EXPOSURE_VISUAL_MS);
+}
+
+function resetAll(){
+  clearTimeout(prepTimer);
+  state.stage = 'idle';
+  $('btn-prep').classList.remove('holding');
+  $('btn-prep').textContent = 'Prepare';
+  $('btn-expose').disabled = true;
+  $('led-rotor').classList.remove('on','blink');
+  $('led-expose').classList.remove('on');
+  $('led-fault').classList.remove('on');
+  $('filament-fine-unit').classList.remove('heating');
+  $('filament-broad-unit').classList.remove('heating');
+  $('beam-electron').classList.remove('active');
+  $('xray-cone').classList.remove('active');
+  $('electron-stream').classList.remove('active');
+  $('impact-flash').classList.remove('active','arc');
+  $('chamber-seg-L').classList.remove('firing');
+  $('chamber-seg-C').classList.remove('firing');
+  $('chamber-seg-R').classList.remove('firing');
+  $('waveform-panel').classList.remove('exposing','current-flowing','kv-shown','current-shown','load-fault-shown');
+  $('hv-axis-y').textContent = '\u2014';
+  $('load-axis-y').textContent = '\u2014';
+  $('load-axis-x').textContent = '\u2014';
+  setStatus('Ready to prepare exposure.');
+  render();
+}
+
+function switchMode(mode){
+  $('operate-panel').style.display = mode === 'operate' ? '' : 'none';
+  $('qa-panel').style.display = mode === 'qa' ? '' : 'none';
+  $('waveform-panel').style.display = mode === 'signals' ? '' : 'none';
+  $('tab-operate').classList.toggle('active', mode === 'operate');
+  $('tab-qa').classList.toggle('active', mode === 'qa');
+  $('tab-signals').classList.toggle('active', mode === 'signals');
+}
+
+// Smooth per-station calibration drift: a machine that's slightly out of cal
+// but still within a plausible range (+3% at low kV, -2% at high kV).
+function baseCalibPct(kv){
+  return 0.03 - (kv - 40) * (0.05 / 85);
+}
+
+// Only indices 0/1/2 are ever used, since a QA series always starts fresh.
+const NORMAL_JITTER = [0.000, -0.003, 0.002];
+const NOISY_JITTER  = [0.000, -0.090, 0.080];
+// Sporadic arcing from a damaged target: mostly fine, with one wild outlier
+// shot -- a genuinely different failure signature from dcbus's steady ripple.
+const ERRATIC_JITTER = [0.000, -0.450, 0.050];
+
+function qaMeasuredKv(kv, fault, shotIdx){
+  if(fault === 'filament') return null;
+  if(fault === 'hvrect'){
+    const j = NOISY_JITTER[shotIdx % NOISY_JITTER.length] * 0.6;
+    return Math.round(kv * (0.6 + j) * 10) / 10;
+  }
+  const drift = baseCalibPct(kv);
+  let jitterTable = NORMAL_JITTER;
+  if(fault === 'dcbus') jitterTable = NOISY_JITTER;
+  if(fault === 'anodedamage') jitterTable = ERRATIC_JITTER;
+  const j = jitterTable[shotIdx % jitterTable.length];
+  return Math.round(kv * (1 + drift + j) * 10) / 10;
+}
+
+// Timing is its own circuit, independent of the kV-related faults modeled here,
+// so it reads with only small natural jitter regardless of dcbus/hvrect state.
+const TIME_JITTER = [0.000, -0.004, 0.003];
+function qaMeasuredTime(t, shotIdx){
+  const j = TIME_JITTER[shotIdx % TIME_JITTER.length];
+  return Math.round(t * (1 + j) * 10) / 10;
+}
+
+// Illustrative dose model (not a clinically calibrated formula): scales with
+// kV-squared and mAs, using the already-measured kV so a low/unstable kV
+// reading (e.g. the hvrect fault) drags dose down even further, and using the
+// fault-reduced effective mA so a real meter would show the consequence of
+// reduced tube current even though it never measures mA directly.
+function qaMeasuredDose(measuredKv, ma, fault, measuredMs){
+  const effMa = fault === 'hvrect' ? Math.round(ma * 0.85) : ma;
+  const mAs = effMa * measuredMs / 1000;
+  const dose = Math.pow(measuredKv / 80, 2) * mAs * 0.01;
+  return Math.round(dose * 100) / 100;
+}
+
+const MGY_TO_MR = 114;
+const QA_AUTO_CLEAR_MS = 4000;
+let qaMeterState = { kv: null, ms: null, doseMGy: null, unit: 'mGy', hold: false, noSignal: false, clearTimer: null };
+
+function renderMeter(){
+  const kvEl = $('qa-meter-kv'), msEl = $('qa-meter-ms'), doseEl = $('qa-meter-dose');
+  [kvEl, msEl, doseEl].forEach(el => el.classList.remove('ok','fault'));
+
+  if(qaMeterState.kv === null){
+    const placeholder = qaMeterState.noSignal ? '---' : '\u2014';
+    kvEl.textContent = placeholder;
+    msEl.textContent = placeholder;
+    doseEl.textContent = placeholder;
+    if(qaMeterState.noSignal){ [kvEl, msEl, doseEl].forEach(el => el.classList.add('fault')); }
+  } else {
+    kvEl.textContent = qaMeterState.kv.toFixed(1);
+    msEl.textContent = qaMeterState.ms.toFixed(1);
+    const shown = qaMeterState.unit === 'mGy' ? qaMeterState.doseMGy : qaMeterState.doseMGy * MGY_TO_MR;
+    doseEl.textContent = shown.toFixed(qaMeterState.unit === 'mGy' ? 2 : 1);
+    [kvEl, msEl, doseEl].forEach(el => el.classList.add('ok'));
+  }
+  $('qa-meter-dose-unit').textContent = qaMeterState.unit;
+}
+
+function scheduleMeterAutoClear(){
+  clearTimeout(qaMeterState.clearTimer);
+  if(qaMeterState.hold) return;
+  qaMeterState.clearTimer = setTimeout(() => {
+    qaMeterState.kv = null; qaMeterState.ms = null; qaMeterState.doseMGy = null; qaMeterState.noSignal = false;
+    renderMeter();
+  }, QA_AUTO_CLEAR_MS);
+}
+
+function meterZero(){
+  clearTimeout(qaMeterState.clearTimer);
+  qaMeterState.kv = null; qaMeterState.ms = null; qaMeterState.doseMGy = null; qaMeterState.noSignal = false;
+  renderMeter();
+}
+
+function meterToggleHold(){
+  qaMeterState.hold = !qaMeterState.hold;
+  $('qa-btn-hold').classList.toggle('active', qaMeterState.hold);
+  $('qa-btn-hold').setAttribute('aria-pressed', qaMeterState.hold ? 'true' : 'false');
+  if(qaMeterState.hold){
+    clearTimeout(qaMeterState.clearTimer);
+  } else if(qaMeterState.kv !== null || qaMeterState.noSignal){
+    scheduleMeterAutoClear();
+  }
+}
+
+function meterToggleUnits(){
+  qaMeterState.unit = qaMeterState.unit === 'mGy' ? 'mR' : 'mGy';
+  renderMeter();
+}
+
+let qaBusy = false;
+let qaReadings = [];
+let qaLockedKey = null;
+
+function qaTechniqueKey(){
+  const base = state.kv + '_' + maStations[state.maIdx] + '_' + state.fault + '_' + (state.aecOn ? 'aec' : 'manual');
+  return state.aecOn
+    ? base + '_' + phantomStations[state.phantomIdx] + '_' + state.density + '_' + state.chamber
+    : base + '_' + timeStations[state.timeIdx];
+}
+
+function qaUpdateFireButton(){
+  // Changing kV/mA/time/fault/AEC technique after a series is locked in makes
+  // the NEXT fire start a fresh series (see qaFire's key check) even though
+  // qaReadings itself hasn't been cleared yet -- so the button must reflect
+  // what firing again would actually do, not the stale count from before the
+  // technique changed.
+  const fresh = qaTechniqueKey() !== qaLockedKey;
+  const n = fresh ? 0 : qaReadings.length;
+  $('qa-fire-btn').textContent = n >= 3 ? 'Series complete \u2014 Clear to retest' : 'Fire & Measure (' + n + '/3)';
+  $('qa-fire-btn').disabled = n >= 3;
+}
+
+function renderQaTable(setKv){
+  const tbody = $('qa-table-body');
+  tbody.innerHTML = '';
+  qaReadings.forEach((r, i) => {
+    const err = (r.kv - setKv) / setKv * 100;
+    const note = r.flag === 'backup' ? '⚠ backup timer' : (r.flag === 'minresp' ? '⚠ min-response' : '');
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.kv.toFixed(1) + ' kV</td><td>' + (err >= 0 ? '+' : '') + err.toFixed(1) + '%</td><td>' + r.ms.toFixed(1) + ' ms</td><td>' + r.dose.toFixed(2) + ' mGy</td><td class="qa-note">' + note + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function qaStats(values){
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  // A meter reading a steady zero (e.g. a dead AEC chamber every shot) is
+  // technically "perfectly reproducible" -- guard the divide so that shows as
+  // 0% CoV instead of NaN, rather than as a false alarm on the wrong metric.
+  const cov = mean === 0 ? 0 : Math.sqrt(variance) / mean * 100;
+  return { mean, cov };
+}
+
+function computeQaResult(setKv, setMs){
+  const kvStats = qaStats(qaReadings.map(r => r.kv));
+  const msStats = qaStats(qaReadings.map(r => r.ms));
+  const doseStats = qaStats(qaReadings.map(r => r.dose));
+
+  const kvError = (kvStats.mean - setKv) / setKv * 100;
+  const msError = (msStats.mean - setMs) / setMs * 100;
+
+  const kvAccPass = Math.abs(kvError) <= 5;
+  const msAccPass = Math.abs(msError) <= 5;
+  const kvReproPass = kvStats.cov <= 5;
+  const doseReproPass = doseStats.cov <= 5;
+
+  $('qa-result').innerHTML =
+    '<div class="qa-metric ' + (kvAccPass ? 'pass' : 'fail') + '">kV accuracy: mean ' + kvStats.mean.toFixed(1) + ' kV, error ' + (kvError >= 0 ? '+' : '') + kvError.toFixed(1) + '% \u2014 ' + (kvAccPass ? 'PASS' : 'FAIL') + ' (tolerance \u00b15%)</div>' +
+    '<div class="qa-metric ' + (msAccPass ? 'pass' : 'fail') + '">Timer accuracy: mean ' + msStats.mean.toFixed(1) + ' ms, error ' + (msError >= 0 ? '+' : '') + msError.toFixed(1) + '% \u2014 ' + (msAccPass ? 'PASS' : 'FAIL') + ' (tolerance \u00b15%)</div>' +
+    '<div class="qa-metric ' + (kvReproPass ? 'pass' : 'fail') + '">kV reproducibility: CoV ' + kvStats.cov.toFixed(1) + '% \u2014 ' + (kvReproPass ? 'PASS' : 'FAIL') + ' (tolerance \u22645%)</div>' +
+    '<div class="qa-metric ' + (doseReproPass ? 'pass' : 'fail') + '">Dose reproducibility: CoV ' + doseStats.cov.toFixed(1) + '% \u2014 ' + (doseReproPass ? 'PASS' : 'FAIL') + ' (tolerance \u22645%)</div>';
+}
+
+// AEC has no set time to check a timer against -- the AEC itself decides when
+// to terminate -- so the equivalent acceptance test is whether the delivered
+// dose lands on the density step's target instead.
+function computeQaResultAec(setKv, targetDose){
+  const kvStats = qaStats(qaReadings.map(r => r.kv));
+  const doseStats = qaStats(qaReadings.map(r => r.dose));
+
+  const kvError = (kvStats.mean - setKv) / setKv * 100;
+  const doseError = (doseStats.mean - targetDose) / targetDose * 100;
+
+  const kvAccPass = Math.abs(kvError) <= 5;
+  const doseAccPass = Math.abs(doseError) <= 5;
+  const kvReproPass = kvStats.cov <= 5;
+  const doseReproPass = doseStats.cov <= 5;
+  const anyAbnormal = qaReadings.some(r => r.flag);
+
+  let html =
+    '<div class="qa-metric ' + (kvAccPass ? 'pass' : 'fail') + '">kV accuracy: mean ' + kvStats.mean.toFixed(1) + ' kV, error ' + (kvError >= 0 ? '+' : '') + kvError.toFixed(1) + '% \u2014 ' + (kvAccPass ? 'PASS' : 'FAIL') + ' (tolerance \u00b15%)</div>' +
+    '<div class="qa-metric ' + (doseAccPass ? 'pass' : 'fail') + '">AEC dose accuracy: mean ' + doseStats.mean.toFixed(2) + ' mGy vs ' + targetDose.toFixed(2) + ' mGy target, error ' + (doseError >= 0 ? '+' : '') + doseError.toFixed(1) + '% \u2014 ' + (doseAccPass ? 'PASS' : 'FAIL') + ' (tolerance \u00b15%)</div>' +
+    '<div class="qa-metric ' + (kvReproPass ? 'pass' : 'fail') + '">kV reproducibility: CoV ' + kvStats.cov.toFixed(1) + '% \u2014 ' + (kvReproPass ? 'PASS' : 'FAIL') + ' (tolerance \u22645%)</div>' +
+    '<div class="qa-metric ' + (doseReproPass ? 'pass' : 'fail') + '">Dose reproducibility: CoV ' + doseStats.cov.toFixed(1) + '% \u2014 ' + (doseReproPass ? 'PASS' : 'FAIL') + ' (tolerance \u22645%)</div>';
+  if(anyAbnormal){
+    html += '<div class="qa-metric fail">Caution: at least one shot did not terminate on the AEC sensor itself \u2014 the backup timer or minimum-response limit stepped in instead (see Note column above). A steady-looking set of numbers here can still mean the AEC isn\u2019t the one doing the terminating.</div>';
+  }
+  $('qa-result').innerHTML = html;
+}
+
+function qaFire(){
+  if(qaBusy) return;
+  const key = qaTechniqueKey();
+  if(qaLockedKey !== key){
+    qaReadings = [];
+    qaLockedKey = key;
+    $('qa-table-body').innerHTML = '';
+  }
+  if(qaReadings.length >= 3) return;
+
+  qaBusy = true;
+  $('qa-fire-btn').disabled = true;
+  $('qa-result').textContent = 'Measuring...';
+  const isAec = state.aecOn;
+  const kv = state.kv;
+  const ma = maStations[state.maIdx];
+  const t = timeStations[state.timeIdx];
+  const thickness = phantomStations[state.phantomIdx];
+  const density = state.density;
+  const chamberDead = state.fault === 'aecchamber' && state.chamber === 'L';
+  const shotIdx = qaReadings.length;
+  const filamentOk = state.fault !== 'filament';
+  if(filamentOk){
+    $('qa-beam-cone').classList.add('active');
+  }
+
+  setTimeout(() => {
+    $('qa-beam-cone').classList.remove('active');
+    const kvReading = qaMeasuredKv(kv, state.fault, shotIdx);
+    clearTimeout(qaMeterState.clearTimer);
+
+    if(kvReading === null){
+      qaMeterState.kv = null; qaMeterState.ms = null; qaMeterState.doseMGy = null; qaMeterState.noSignal = true;
+      renderMeter();
+      scheduleMeterAutoClear();
+      $('qa-result').innerHTML = '<div class="qa-metric fail">No reading: an open filament means no X-ray output is being produced at all. Fix the fault before running QA.</div>';
+    } else {
+      // Independent-meter kV accuracy comes from the same HV-chain model
+      // either way -- AEC only changes how the exposure is timed, not whether
+      // the generator hits the kV that was set.
+      let msReading, doseReading, flag = null, aecTargetDose = null;
+      if(isAec){
+        const aecResult = aecComputeExposure(kv, ma, thickness, density, state.fault, chamberDead, shotIdx);
+        msReading = Math.round(aecResult.time * 10) / 10;
+        doseReading = Math.round(aecResult.dose * 100) / 100;
+        flag = aecResult.backupEngaged ? 'backup' : (aecResult.minResponseExceeded ? 'minresp' : null);
+        aecTargetDose = aecResult.targetDose;
+      } else {
+        msReading = qaMeasuredTime(t, shotIdx);
+        doseReading = qaMeasuredDose(kvReading, ma, state.fault, msReading);
+      }
+
+      qaMeterState.kv = kvReading; qaMeterState.ms = msReading; qaMeterState.doseMGy = doseReading; qaMeterState.noSignal = false;
+      renderMeter();
+      scheduleMeterAutoClear();
+
+      qaReadings.push({ kv: kvReading, ms: msReading, dose: doseReading, flag });
+      renderQaTable(kv);
+      if(qaReadings.length >= 3){
+        if(isAec){ computeQaResultAec(kv, aecTargetDose); } else { computeQaResult(kv, t); }
+      } else {
+        $('qa-result').textContent = 'Reading ' + qaReadings.length + ' of 3 recorded \u2014 fire again with the same technique.';
+      }
+    }
+    qaBusy = false;
+    qaUpdateFireButton();
+  }, 1000);
+}
+
+function qaClear(){
+  qaReadings = [];
+  qaLockedKey = null;
+  qaBusy = false;
+  $('qa-table-body').innerHTML = '';
+  $('qa-result').textContent = 'Take 3 readings at the same technique to compute accuracy and reproducibility.';
+  meterZero();
+  qaUpdateFireButton();
+}
+
+const phantomStations = [10, 15, 20, 25, 30];
+const aecState = { kv: 80, maIdx: maStations.indexOf(200), phantomIdx: 2, density: 0, chamber: 'C' };
+let aecBusy = false;
+let aecFreeFireShotCount = 0;
+
+function aecSelectChamber(ch){
+  if(aecBusy) return;
+  aecState.chamber = ch;
+  ['L','C','R'].forEach(c => {
+    $('chamber-btn-' + c).classList.toggle('active', c === ch);
+    $('aec-chamber-' + c).classList.toggle('selected', c === ch);
+  });
+}
+
+function aecStepKv(d){
+  if(aecBusy) return;
+  aecState.kv = Math.min(125, Math.max(40, aecState.kv + d));
+  renderAec();
+}
+function aecStepMa(d){
+  if(aecBusy) return;
+  aecState.maIdx = Math.min(maStations.length - 1, Math.max(0, aecState.maIdx + d));
+  renderAec();
+}
+function aecStepPhantom(d){
+  if(aecBusy) return;
+  aecState.phantomIdx = Math.min(phantomStations.length - 1, Math.max(0, aecState.phantomIdx + d));
+  renderAec();
+}
+function aecStepDensity(d){
+  if(aecBusy) return;
+  aecState.density = Math.min(2, Math.max(-2, aecState.density + d));
+  renderAec();
+}
+
+function renderAec(){
+  const thickness = phantomStations[aecState.phantomIdx];
+  $('aec-kv-label').textContent = aecState.kv;
+  $('aec-ma-label').textContent = maStations[aecState.maIdx];
+  $('aec-phantom-label').textContent = thickness + ' cm';
+  $('aec-density-label').textContent = (aecState.density > 0 ? '+' : '') + aecState.density;
+  const h = thickness * 1.3;
+  $('aec-phantom-rect').setAttribute('y', 193 - h);
+  $('aec-phantom-rect').setAttribute('height', h);
+}
+
+// Illustrative AEC model, not clinically calibrated: dose rate scales with
+// kV-squared and mA, attenuated exponentially through the phantom. The
+// backup-timer formula (600 mAs at >=51kV, 2000 mAs below) matches the real
+// federal limit. Minimum response time is scaled up from the real ~1-5ms for
+// visibility in a teaching tool.
+const AEC_ATTEN_COEFF = 0.12;
+const AEC_DOSE_CONST = 0.0003;
+const AEC_MIN_RESPONSE_MS = 8;
+// Only indices 0/1/2 are ever used by the reproducibility test, since a series
+// always starts fresh; free-fire cycles through the same table on repeat shots.
+const AEC_NORMAL_JITTER = [0.000, -0.006, 0.005];
+const AEC_NOISY_JITTER  = [0.000, -0.130, 0.110];
+
+// Shared exposure model used by free-fire and all three guided-protocol tests,
+// so every entry point stays physically consistent with the others.
+function aecComputeExposure(kv, ma, thickness, density, fault, forceNoSignal, shotIdx){
+  shotIdx = shotIdx || 0;
+  const backupTimeMs = (kv >= 51 ? 600 : 2000) / ma * 1000;
+  const targetDose = 0.3 * Math.pow(1.25, density);
+
+  if(fault === 'filament' || forceNoSignal){
+    return { time: backupTimeMs, dose: 0, backupTimeMs, targetDose, backupEngaged: true, minResponseExceeded: false, overPct: 0, noSignal: true };
+  }
+
+  const attenuation = Math.exp(-AEC_ATTEN_COEFF * thickness);
+  const kvFactor = fault === 'hvrect' ? 0.6 : 1;
+  const jitterTable = fault === 'dcbus' ? AEC_NOISY_JITTER : AEC_NORMAL_JITTER;
+  const jitter = jitterTable[shotIdx % jitterTable.length];
+  const doseRatePerMs = Math.pow((kv * kvFactor) / 80, 2) * ma * attenuation * AEC_DOSE_CONST * (1 + jitter);
+  let time = targetDose / doseRatePerMs;
+  let backupEngaged = false;
+  let minResponseExceeded = false;
+  let overPct = 0;
+
+  if(time > backupTimeMs){
+    time = backupTimeMs;
+    backupEngaged = true;
+  } else if(time < AEC_MIN_RESPONSE_MS){
+    const actualDose = doseRatePerMs * AEC_MIN_RESPONSE_MS;
+    overPct = (actualDose / targetDose - 1) * 100;
+    time = AEC_MIN_RESPONSE_MS;
+    minResponseExceeded = true;
+  }
+
+  return { time, dose: doseRatePerMs * time, backupTimeMs, targetDose, backupEngaged, minResponseExceeded, overPct, noSignal: false };
+}
+
+function aecFire(){
+  if(aecBusy) return;
+  aecBusy = true;
+  $('aec-fire-btn').disabled = true;
+  $('aec-result').textContent = 'Exposing...';
+  $('aec-beam-cone').classList.add('active');
+  const chamber = aecState.chamber;
+  $('aec-chamber-' + chamber).classList.add('firing');
+
+  const kv = aecState.kv;
+  const ma = maStations[aecState.maIdx];
+  const thickness = phantomStations[aecState.phantomIdx];
+  const density = aecState.density;
+  const fault = state.fault;
+  const chamberDead = fault === 'aecchamber' && chamber === 'L';
+
+  setTimeout(() => {
+    $('aec-beam-cone').classList.remove('active');
+    $('aec-chamber-' + chamber).classList.remove('firing');
+    aecBusy = false;
+    $('aec-fire-btn').disabled = false;
+
+    const r = aecComputeExposure(kv, ma, thickness, density, fault, chamberDead, aecFreeFireShotCount++);
+
+    if(r.noSignal){
+      const reason = fault === 'filament'
+        ? 'no signal ever reached the chamber (open filament &mdash; no beam at all)'
+        : 'the left chamber circuit is not responding &mdash; try selecting a different chamber';
+      $('aec-result').innerHTML =
+        '<div class="qa-metric fail">Backup timer engaged: ' + reason + '. Exposure terminated at ' + r.backupTimeMs.toFixed(0) + ' ms by the safety backup, not by the AEC.</div>';
+      return;
+    }
+
+    let note;
+    if(r.backupEngaged){
+      note = '<div class="qa-metric fail">Backup timer engaged: the target dose was never reached in time. Exposure cut off at the ' + r.backupTimeMs.toFixed(0) + ' ms safety limit instead of terminating normally.</div>';
+    } else if(r.minResponseExceeded){
+      note = '<div class="qa-metric fail">Minimum response time exceeded: this setup terminates faster than the AEC can react, overexposing by about ' + r.overPct.toFixed(0) + '%. Try a lower mA station for a phantom this thin.</div>';
+    } else if(fault === 'hvrect'){
+      note = '<div class="qa-metric fail">Terminated normally, but notice how long that took for this technique \u2014 reduced kV means more time is needed to reach the same target dose.</div>';
+    } else if(fault === 'dcbus'){
+      note = '<div class="qa-metric fail">Terminated normally this time, but DC bus ripple makes this timing inconsistent \u2014 firing again at the same setup may give a different time.</div>';
+    } else {
+      note = '<div class="qa-metric pass">Terminated normally \u2014 no backup timer or minimum-response issue.</div>';
+    }
+
+    $('aec-result').innerHTML =
+      '<div class="qa-metric">AEC-determined time: <strong>' + r.time.toFixed(1) + ' ms</strong> (' + (ma * r.time / 1000).toFixed(1) + ' mAs)</div>' +
+      '<div class="qa-metric">Dose to chamber: ' + r.dose.toFixed(2) + ' mGy (target ' + r.targetDose.toFixed(2) + ' mGy)</div>' +
+      note;
+  }, 1200);
+}
+
+function aecClear(){
+  $('aec-result').textContent = 'Configure a setup and fire to see the AEC-determined time.';
+}
+
+let aecLoopRunning = false;
+let aecLoopInterval = null;
+const AEC_LOOP_ITERATIONS = 6;
+const AEC_LOOP_TICK_MS = 220;
+
+function aecResetLoopVisuals(){
+  ['loop-box-1','loop-box-2','loop-box-3','loop-box-4'].forEach(id => $(id).classList.remove('active','terminate-ok','terminate-fault'));
+  $('loop-exit-arrow').classList.remove('active');
+  $('loop-feedback-arrow').classList.remove('active');
+  $('loop-dose-current').textContent = '0.00';
+  $('loop-bar-fill').style.width = '0%';
+  $('loop-bar-fill').classList.remove('over','stalled');
+}
+
+function aecResetLoop(){
+  clearInterval(aecLoopInterval);
+  aecLoopRunning = false;
+  $('aec-loop-btn').disabled = false;
+  aecResetLoopVisuals();
+  $('loop-dose-target').textContent = '\u2014';
+  $('aec-loop-status').textContent = 'Configure a setup above, then run the loop to watch it work.';
+}
+
+function aecLoopFinish(result){
+  aecLoopRunning = false;
+  $('aec-loop-btn').disabled = false;
+  if(result.noSignal){
+    $('aec-loop-status').innerHTML = '<div class="qa-metric fail">The chamber never saw a rising signal \u2014 the backup timer forces termination at ' + result.backupTimeMs.toFixed(0) + ' ms instead.</div>';
+  } else if(result.backupEngaged){
+    $('aec-loop-status').innerHTML = '<div class="qa-metric fail">Target was never reached \u2014 the backup timer forces termination at ' + result.backupTimeMs.toFixed(0) + ' ms, well before the loop converged.</div>';
+  } else if(result.minResponseExceeded){
+    $('aec-loop-status').innerHTML = '<div class="qa-metric fail">Target was passed before the loop could even finish one cycle \u2014 overexposure by about ' + result.overPct.toFixed(0) + '%.</div>';
+  } else {
+    $('aec-loop-status').innerHTML = '<div class="qa-metric pass">Loop converged normally at ' + result.time.toFixed(1) + ' ms \u2014 target dose reached, generator terminated cleanly.</div>';
+  }
+}
+
+function aecRunLoop(){
+  if(aecLoopRunning) return;
+  aecLoopRunning = true;
+  $('aec-loop-btn').disabled = true;
+  aecResetLoopVisuals();
+
+  const kv = aecState.kv, ma = maStations[aecState.maIdx], thickness = phantomStations[aecState.phantomIdx], density = aecState.density, fault = state.fault, chamber = aecState.chamber;
+  const chamberDead = fault === 'aecchamber' && chamber === 'L';
+  const result = aecComputeExposure(kv, ma, thickness, density, fault, chamberDead);
+
+  $('loop-dose-target').textContent = result.targetDose.toFixed(2);
+  $('aec-loop-status').textContent = 'Loop running...';
+
+  let iter = 0;
+  let sub = 0; // 0 = measure, 1 = compare, 2 = decide
+
+  aecLoopInterval = setInterval(() => {
+    $('loop-box-1').classList.remove('active');
+    $('loop-box-2').classList.remove('active');
+    $('loop-box-3').classList.remove('active');
+    $('loop-feedback-arrow').classList.remove('active');
+    $('loop-exit-arrow').classList.remove('active');
+
+    if(sub === 0){
+      $('loop-box-1').classList.add('active');
+    } else if(sub === 1){
+      $('loop-box-2').classList.add('active');
+      let pct;
+      if(result.noSignal){ pct = 0; }
+      else if(result.minResponseExceeded){ pct = 140; }
+      else if(result.backupEngaged){ pct = Math.min(70, (iter + 1) * 12); }
+      else { pct = ((iter + 1) / AEC_LOOP_ITERATIONS) * 100; }
+      $('loop-dose-current').textContent = (result.targetDose * pct / 100).toFixed(2);
+      $('loop-bar-fill').style.width = Math.min(100, pct) + '%';
+      $('loop-bar-fill').classList.toggle('over', pct > 100);
+      $('loop-bar-fill').classList.toggle('stalled', result.backupEngaged || result.noSignal);
+    } else {
+      $('loop-box-3').classList.add('active');
+      let done;
+      if(result.minResponseExceeded){ done = true; }
+      else if(result.backupEngaged || result.noSignal){ done = iter >= AEC_LOOP_ITERATIONS - 1; }
+      else { done = (iter + 1) >= AEC_LOOP_ITERATIONS; }
+
+      if(done){
+        $('loop-exit-arrow').classList.add('active');
+        $('loop-box-4').classList.add('active');
+        $('loop-box-4').classList.add((result.backupEngaged || result.noSignal || result.minResponseExceeded) ? 'terminate-fault' : 'terminate-ok');
+        clearInterval(aecLoopInterval);
+        aecLoopFinish(result);
+        return;
+      }
+      $('loop-feedback-arrow').classList.add('active');
+    }
+
+    sub++;
+    if(sub > 2){ sub = 0; iter++; }
+  }, AEC_LOOP_TICK_MS);
+}
+
+const aecTestStatus = { repro: null, mrt: null, backup: null };
+
+function aecRenderProtocolSummary(){
+  const labels = { repro: 'Reproducibility', mrt: 'Minimum response time', backup: 'Backup timer' };
+  let html = '';
+  ['repro','mrt','backup'].forEach(k => {
+    const st = aecTestStatus[k];
+    const mark = st === null ? '\u25CB' : (st ? '\u2713' : '\u2717');
+    const cls = st === null ? '' : (st ? 'pass' : 'fail');
+    html += '<div class="qa-metric ' + cls + '">' + mark + ' ' + labels[k] + '</div>';
+  });
+  $('aec-protocol-summary').innerHTML = html;
+}
+
+function aecResetProtocol(){
+  aecTestStatus.repro = null;
+  aecTestStatus.mrt = null;
+  aecTestStatus.backup = null;
+  aecRenderProtocolSummary();
+  $('aec-mrt-result').textContent = 'Run the check to see if this setup is safe.';
+  $('aec-backup-result').textContent = 'Run the test to verify the safety backup.';
+}
+
+// -- Test 1: Reproducibility --------------------------------------------
+let aecReproReadings = [];
+let aecReproLockedKey = null;
+
+function aecReproTechniqueKey(){
+  return aecState.kv + '_' + maStations[aecState.maIdx] + '_' + phantomStations[aecState.phantomIdx] + '_' + aecState.density + '_' + aecState.chamber + '_' + state.fault;
+}
+
+function aecUpdateReproButton(){
+  const n = aecReproReadings.length;
+  $('aec-repro-btn').textContent = n >= 3 ? 'Series complete \u2014 Clear to retest' : 'Fire (' + n + '/3)';
+  $('aec-repro-btn').disabled = n >= 3;
+}
+
+function aecRenderReproTable(){
+  const tbody = $('aec-repro-table-body');
+  tbody.innerHTML = '';
+  aecReproReadings.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.time.toFixed(1) + ' ms</td><td>' + r.dose.toFixed(2) + ' mGy</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function aecReproFire(){
+  if(aecBusy) return;
+  const key = aecReproTechniqueKey();
+  if(aecReproLockedKey !== key){
+    aecReproReadings = [];
+    aecReproLockedKey = key;
+    $('aec-repro-table-body').innerHTML = '';
+  }
+  if(aecReproReadings.length >= 3) return;
+
+  aecBusy = true;
+  $('aec-repro-btn').disabled = true;
+  $('aec-repro-result').textContent = 'Exposing...';
+  $('aec-beam-cone').classList.add('active');
+  const chamber = aecState.chamber;
+  $('aec-chamber-' + chamber).classList.add('firing');
+
+  const kv = aecState.kv, ma = maStations[aecState.maIdx], thickness = phantomStations[aecState.phantomIdx], density = aecState.density, fault = state.fault;
+  const chamberDead = fault === 'aecchamber' && chamber === 'L';
+
+  setTimeout(() => {
+    $('aec-beam-cone').classList.remove('active');
+    $('aec-chamber-' + chamber).classList.remove('firing');
+    aecBusy = false;
+
+    const r = aecComputeExposure(kv, ma, thickness, density, fault, chamberDead, aecReproReadings.length);
+    if(r.noSignal){
+      $('aec-repro-result').innerHTML = '<div class="qa-metric fail">No signal reached the chamber \u2014 reproducibility can\'t be tested until this is fixed.</div>';
+      $('aec-repro-btn').disabled = false;
+      return;
+    }
+
+    aecReproReadings.push({ time: r.time, dose: r.dose });
+    aecRenderReproTable();
+
+    if(aecReproReadings.length >= 3){
+      const timeStats = qaStats(aecReproReadings.map(x => x.time));
+      const doseStats = qaStats(aecReproReadings.map(x => x.dose));
+      const timePass = timeStats.cov <= 5;
+      const dosePass = doseStats.cov <= 5;
+      $('aec-repro-result').innerHTML =
+        '<div class="qa-metric ' + (timePass ? 'pass' : 'fail') + '">Time reproducibility: CoV ' + timeStats.cov.toFixed(1) + '% \u2014 ' + (timePass ? 'PASS' : 'FAIL') + ' (tolerance \u22645%)</div>' +
+        '<div class="qa-metric ' + (dosePass ? 'pass' : 'fail') + '">Dose reproducibility: CoV ' + doseStats.cov.toFixed(1) + '% \u2014 ' + (dosePass ? 'PASS' : 'FAIL') + ' (tolerance \u22645%)</div>';
+      aecTestStatus.repro = timePass && dosePass;
+      aecRenderProtocolSummary();
+    } else {
+      $('aec-repro-result').textContent = 'Reading ' + aecReproReadings.length + ' of 3 recorded \u2014 fire again with the same technique.';
+      $('aec-repro-btn').disabled = false;
+    }
+  }, 1200);
+}
+
+function aecReproClear(){
+  aecReproReadings = [];
+  aecReproLockedKey = null;
+  $('aec-repro-table-body').innerHTML = '';
+  $('aec-repro-result').textContent = 'Fire 3 times at the same technique to check reproducibility.';
+  aecUpdateReproButton();
+}
+
+// -- Test 2: Minimum response time ---------------------------------------
+function aecCheckMinResponse(){
+  if(aecBusy) return;
+  aecBusy = true;
+  $('aec-mrt-btn').disabled = true;
+  $('aec-mrt-result').textContent = 'Exposing...';
+  $('aec-beam-cone').classList.add('active');
+  const chamber = aecState.chamber;
+  $('aec-chamber-' + chamber).classList.add('firing');
+
+  const kv = aecState.kv, ma = maStations[aecState.maIdx], thickness = phantomStations[aecState.phantomIdx], density = aecState.density, fault = state.fault;
+  const chamberDead = fault === 'aecchamber' && chamber === 'L';
+
+  setTimeout(() => {
+    $('aec-beam-cone').classList.remove('active');
+    $('aec-chamber-' + chamber).classList.remove('firing');
+    aecBusy = false;
+    $('aec-mrt-btn').disabled = false;
+
+    const r = aecComputeExposure(kv, ma, thickness, density, fault, chamberDead);
+    if(r.noSignal){
+      $('aec-mrt-result').innerHTML = '<div class="qa-metric fail">No signal reached the chamber \u2014 this check needs a working beam first.</div>';
+      return;
+    }
+    if(r.minResponseExceeded){
+      $('aec-mrt-result').innerHTML = '<div class="qa-metric fail">FAIL: this setup terminates in under ' + AEC_MIN_RESPONSE_MS + ' ms, faster than the AEC can react \u2014 overexposing by about ' + r.overPct.toFixed(0) + '%. Select a lower mA station for a phantom this thin.</div>';
+      aecTestStatus.mrt = false;
+    } else {
+      $('aec-mrt-result').innerHTML = '<div class="qa-metric pass">PASS: this setup terminates at ' + r.time.toFixed(1) + ' ms, safely above the ' + AEC_MIN_RESPONSE_MS + ' ms minimum response time.</div>';
+      aecTestStatus.mrt = true;
+    }
+    aecRenderProtocolSummary();
+  }, 1200);
+}
+
+// -- Test 3: Backup timer -------------------------------------------------
+function aecBackupTimerTest(){
+  if(aecBusy) return;
+  aecBusy = true;
+  $('aec-backup-btn').disabled = true;
+  $('aec-backup-result').textContent = 'Chamber shielded \u2014 exposing...';
+  $('aec-beam-cone').classList.add('active');
+  const chamber = aecState.chamber;
+  $('aec-chamber-' + chamber).classList.add('firing');
+
+  const kv = aecState.kv, ma = maStations[aecState.maIdx];
+
+  setTimeout(() => {
+    $('aec-beam-cone').classList.remove('active');
+    $('aec-chamber-' + chamber).classList.remove('firing');
+    aecBusy = false;
+    $('aec-backup-btn').disabled = false;
+
+    const backupTimeMs = (kv >= 51 ? 600 : 2000) / ma * 1000;
+    const deliveredMAs = ma * backupTimeMs / 1000;
+    $('aec-backup-result').innerHTML =
+      '<div class="qa-metric pass">Backup timer engaged at ' + backupTimeMs.toFixed(0) + ' ms (' + deliveredMAs.toFixed(0) + ' mAs) \u2014 matches the regulatory limit (' + (kv >= 51 ? '600' : '2000') + ' mAs at ' + (kv >= 51 ? '\u226551' : '&lt;51') + ' kV). Visual fault signal shown, ready for reset.</div>';
+    aecTestStatus.backup = true;
+    aecRenderProtocolSummary();
+  }, 1200);
+}
+
+if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+  document.querySelectorAll('#waveform-panel animateTransform').forEach(el => el.remove());
+  document.querySelectorAll('#electron-stream animateMotion').forEach(el => el.remove());
+}
+
+render();
+</script>
+</body>
+</html>
